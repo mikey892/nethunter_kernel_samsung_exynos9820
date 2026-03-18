@@ -1,0 +1,57 @@
+name: Build NetHunter Kernel SM-N975F
+on:
+  workflow_dispatch: # Ti permette di farlo partire a mano con un click
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dei sorgenti
+        uses: actions/checkout@v3
+
+      - name: Installazione dipendenze
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential flex bison libssl-dev libelf-dev clang lld llvm
+
+      - name: Scarica Toolchain Clang (AOSP)
+        run: |
+          mkdir clang
+          cd clang
+          curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r416183b.tar.gz
+          tar -xf clang-r416183b.tar.gz
+
+      - name: Configurazione e Compilazione
+        run: |
+          # Definiamo i percorsi
+          export PATH=$(pwd)/clang/bin:$PATH
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export CC=clang
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+
+          # 1. Pulizia
+          make clean && make mrproper
+          
+          # 2. Caricamento Defconfig (Verifica che il nome del file in arch/arm64/configs sia corretto)
+          make exynos9825-d1_eur_open_defconfig
+
+          # 3. Modifica automatica per HID e WiFi Alfa
+          echo "CONFIG_USB_CONFIGFS_F_HID=y" >> .config
+          echo "CONFIG_RT2X00=y" >> .config
+          echo "CONFIG_RT2800USB=y" >> .config
+          echo "CONFIG_RT2800USB_RT33XX=y" >> .config
+          echo "CONFIG_RT2800USB_RT35XX=y" >> .config
+          echo "CONFIG_RT2800USB_RT53XX=y" >> .config
+          echo "CONFIG_RT2800USB_RT55XX=y" >> .config
+
+          # 4. Compilazione vera e propria (usa tutti i core disponibili)
+          make -j$(nproc --all)
+
+      - name: Carica il Kernel finito (Artifact)
+        uses: actions/upload-artifact@v3
+        with:
+          name: Kernel-NetHunter-Note10Plus
+          path: arch/arm64/boot/Image.gz-dtb
+
